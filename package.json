@@ -1,0 +1,13 @@
+{
+  "name": "mp3utils",
+  "version": "0.0.1",
+  "type": "module",
+  "unpkg": "index.js",
+  "scripts": {
+    "test": "mocha *.test.js"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "prettier": "^2.8.8"
+  }
+}
