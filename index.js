@@ -193,3 +193,72 @@ export function* frameIterator(buffer) {
 
 	if (header) yield { header: header, data: buffer.subarray(prevIdx) };
 }
+
+/**
+ * Reads ID3 metadata from an MP3 file stored as a Uint8Array buffer.
+ * Supports ID3v2 tags and extracts title (TIT2), artist (TPE1), and album (TALB).
+ *
+ * @param {Uint8Array} mp3Buffer - The MP3 file loaded as a Uint8Array.
+ * @returns {{ title?: string, artist?: string, album?: string } | null} Extracted metadata or null if no ID3 tag is found.
+ */
+export function readID3Metadata(mp3Buffer) {
+	const textDecoder = new TextDecoder("latin1"); // ID3 tags use ISO-8859-1 encoding
+
+	// Check for ID3v2 header
+	if (textDecoder.decode(mp3Buffer.slice(0, 3)) !== "ID3") {
+		console.error("No ID3v2 tag found.");
+		return null;
+	}
+
+	const version = mp3Buffer[3]; // ID3v2.x version
+	const size =
+		((mp3Buffer[6] & 0x7f) << 21) |
+		((mp3Buffer[7] & 0x7f) << 14) |
+		((mp3Buffer[8] & 0x7f) << 7) |
+		(mp3Buffer[9] & 0x7f);
+
+	console.log(`ID3v2.${version} found, size: ${size} bytes`);
+
+	let offset = 10; // Skip ID3 header
+	/** @type {{ title?: string, artist?: string, album?: string }} */
+	const metadata = {};
+
+	while (offset < size) {
+		const frameId = textDecoder.decode(mp3Buffer.slice(offset, offset + 4));
+		if (!/^[A-Z0-9]{4}$/.test(frameId)) break; // Stop if no valid frame ID
+
+		const frameSize =
+			(mp3Buffer[offset + 4] << 24) |
+			(mp3Buffer[offset + 5] << 16) |
+			(mp3Buffer[offset + 6] << 8) |
+			mp3Buffer[offset + 7];
+
+		const encoding = mp3Buffer[offset + 10]; // First byte of frame data indicates encoding
+		let contentStart = offset + 11; // Skip frame header and encoding byte
+		let content = mp3Buffer.slice(contentStart, contentStart + frameSize - 1);
+
+		// Decode based on encoding type
+		if (encoding === 1) {
+			// UTF-16 encoded
+			content = new TextDecoder("utf-16").decode(content);
+		} else {
+			content = textDecoder.decode(content);
+		}
+
+		// Remove the null-terminator and any padding.
+		try {
+			content = String(content.replace(/\x00+$/, "")).trim();
+		} catch (exc) {
+			// No-op.
+		}
+
+		// Map frame ID to metadata fields
+		if (frameId === "TIT2") metadata.title = content;
+		if (frameId === "TPE1") metadata.artist = content;
+		if (frameId === "TALB") metadata.album = content;
+
+		offset += 10 + frameSize; // Move to next frame
+	}
+
+	return metadata;
+}
